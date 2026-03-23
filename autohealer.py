@@ -104,6 +104,8 @@ PROCESSES: List[dict] = [
             "DISABLE_CLOUDFLARE": "1",
             "DISABLE_PYNGROK": "1",
             "TUNNEL_STABLE_MODE": "1",
+            "DISABLE_PUBLIC_TUNNEL": "1",
+            "PUBLIC_BASE_URL": "https://algostack.onrender.com",
         },
         "port":        8055,
         "start_delay": 12,

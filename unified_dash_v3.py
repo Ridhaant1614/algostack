@@ -4137,11 +4137,12 @@ def _tunnel_guardian(port, lip):
 
     def _save(url):
         try:
-            gate_pw = _public_ipv4() if ".loca.lt" in str(url or "") else ""
+            eff_url = PUBLIC_BASE_URL or str(url or "")
+            gate_pw = _public_ipv4() if ".loca.lt" in eff_url else ""
             os.makedirs(LEVELS_DIR, exist_ok=True)
             with open(os.path.join(LEVELS_DIR,"dashboard_url.json"),"w") as f:
                 json.dump({
-                    "public_url": url,
+                    "public_url": eff_url,
                     "port": port,
                     "lan": f"http://{lip}:{port}",
                     "app_password": PUBLIC_LINK_PASSWORD,
@@ -4222,9 +4223,10 @@ def _tunnel_guardian(port, lip):
                 log.info("✓ Tunnel revived → %s", new_url)
                 # Re-notify Telegram with new URL
                 try:
-                    _gate = _public_ipv4() if ".loca.lt" in str(new_url or "") else ""
+                    announce_url = PUBLIC_BASE_URL or str(new_url or "")
+                    _gate = _public_ipv4() if ".loca.lt" in announce_url else ""
                     _msg = (
-                        f"🔄 AlgoStack tunnel restarted\n{new_url}\n"
+                        f"🔄 AlgoStack tunnel restarted\n{announce_url}\n"
                         f"Dashboard password: {PUBLIC_LINK_PASSWORD}"
                     )
                     if _gate:
@@ -4353,26 +4355,27 @@ def main():
         else:
             pub = open_tunnel(DASH_PORT)
             url = pub or f"http://{lip}:{DASH_PORT}"
+        announce_url = PUBLIC_BASE_URL or url
         try:
-            gate_pw = _public_ipv4() if ".loca.lt" in str(url or "") else ""
+            gate_pw = _public_ipv4() if ".loca.lt" in str(announce_url or "") else ""
             os.makedirs(LEVELS_DIR, exist_ok=True)
             with open(os.path.join(LEVELS_DIR,"dashboard_url.json"),"w") as f:
                 json.dump({
-                    "public_url": url,
+                    "public_url": announce_url,
                     "port": DASH_PORT,
                     "lan": f"http://{lip}:{DASH_PORT}",
                     "app_password": PUBLIC_LINK_PASSWORD,
                     "tunnel_gate_password": gate_pw,
                 }, f)
         except Exception: pass
-        _DS._set(pub_url=url)
+        _DS._set(pub_url=announce_url)
 
         # Send startup URL once to all 3 bots
         with _STARTUP_URL_LOCK:
             if not _STARTUP_URL_SENT:
-                _gate = _public_ipv4() if ".loca.lt" in str(url or "") else ""
+                _gate = _public_ipv4() if ".loca.lt" in str(announce_url or "") else ""
                 _msg = (
-                    f"🟢 AlgoStack v10.7 LIVE\n{url}\n"
+                    f"🟢 AlgoStack v10.7 LIVE\n{announce_url}\n"
                     f"Dashboard password: {PUBLIC_LINK_PASSWORD}\n"
                     f"Equity + Commodity + Crypto | History + Performance | AI Agent"
                 )
@@ -4380,7 +4383,7 @@ def main():
                     _msg += f"\nLocaltunnel gate password: {_gate}"
                 try:
                     from tg_async import send_startup_url
-                    send_startup_url(url)
+                    send_startup_url(announce_url)
                     _tg(_msg)
                 except Exception:
                     _tg(_msg)
