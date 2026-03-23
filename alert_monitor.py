@@ -45,7 +45,8 @@ log = logging.getLogger("alert_monitor")
 IST        = pytz.timezone("Asia/Kolkata")
 LEVELS_DIR = "levels"
 TRADE_DIR  = "trade_logs"
-DASH_PORT  = int(os.getenv("UNIFIED_DASH_PORT", "8055"))
+DASH_PORT  = int(os.getenv("UNIFIED_DASH_PORT", os.getenv("PORT", "8055")))
+DISABLE_PUBLIC_TUNNEL = os.getenv("DISABLE_PUBLIC_TUNNEL", "0").strip() in ("1", "true", "True")
 
 try:
     from config import cfg as _cfg
@@ -266,6 +267,10 @@ def _check_crypto_prices() -> None:
 
 def _check_tunnel() -> None:
     if _in_grace(): return
+    # Hosted mode: this check causes false alerts (self-probing public URL from same app),
+    # and there is no local tunnel process to recover anyway.
+    if DISABLE_PUBLIC_TUNNEL:
+        return
     d   = _rj(os.path.join(LEVELS_DIR, "dashboard_url.json")) or {}
     pub = d.get("public_url", "")
     if not pub or not pub.startswith("http"): return

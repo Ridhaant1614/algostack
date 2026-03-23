@@ -361,6 +361,12 @@ class ManagedProcess:
 
     def start(self) -> None:
         env = {**os.environ, **self.cfg.get("env", {})}
+        env["AUTOHEALER_CHILD"] = "1"
+        # Hosted platforms (Render) inject PORT dynamically; force child dashboards
+        # to bind to this port so public health checks do not fail with 502.
+        _rp = str(os.environ.get("PORT", "")).strip()
+        if _rp.isdigit():
+            env["UNIFIED_DASH_PORT"] = _rp
         # v10.9: Force UTF-8 for all child processes (fixes Python 3.13 Windows crash)
         env['PYTHONIOENCODING'] = 'utf-8'
         env['PYTHONUTF8'] = '1'
