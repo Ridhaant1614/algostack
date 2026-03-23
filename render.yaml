@@ -5,7 +5,12 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /
+    dockerCommand: python -X utf8 -u autohealer.py --profile render-full
     envVars:
+      - key: AUTOHEALER_PROFILE
+        value: "render-full"
+      - key: DISABLE_AFFINITY
+        value: "1"
       - key: DISABLE_PUBLIC_TUNNEL
         value: "1"
       - key: DISABLE_CLOUDFLARE
@@ -14,10 +19,11 @@ services:
         value: "1"
       - key: TUNNEL_STABLE_MODE
         value: "1"
+      - key: FORCE_JSON_IPC
+        value: "1"
+      - key: PUBLIC_BASE_URL
+        value: "https://algostack.onrender.com"
       - key: PUBLIC_LINK_PASSWORD
         value: "Ridz@2004"
       - key: TZ
         value: "Asia/Kolkata"
-      # Render injects PORT dynamically; map UnifiedDash to it.
-      - key: UNIFIED_DASH_PORT
-        sync: false

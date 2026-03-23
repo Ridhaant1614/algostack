@@ -10,6 +10,7 @@ Usage:
     python autohealer_v2.py --wifi    # only run WiFi keepalive (no process mgmt)
     python autohealer_v2.py --errors [NAME]  # show recent logs
     python autohealer_v2.py --login   # force a single portal login and exit
+    python autohealer_v2.py --profile render-full  # hosted full stack mode
 
 New in v2:
   ✅ WifiKeepalive integrated — checks internet every 90s
@@ -59,6 +60,7 @@ TG_CHATS    = [c for c in [os.getenv("TELEGRAM_CHAT_ID","1376513391"), "79367480
 MAX_RESTARTS_PER_HOUR = 5
 RESTART_COOLDOWN_S    = 30
 LOG_TAIL_LINES        = 120
+DISABLE_AFFINITY      = os.getenv("DISABLE_AFFINITY", "0").strip() in ("1", "true", "True")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -283,6 +285,53 @@ PROCESSES: List[dict] = [
     },
 ]
 
+# Render/low-resource mode: run only the minimum stack needed to keep
+# live prices + optimizer/best-x panels updating in hosted environments.
+LITE_PROCESS_NAMES = {
+    "Algofinal",
+    "UnifiedDash",
+    "Scanner1",
+    "XOptimizer",
+    "BestXTrader",
+    "CommodityEngine",
+    "CommScanner1",
+    "CryptoEngine",
+    "CryptoScanner1",
+    "AlertMonitor",
+}
+
+
+def _is_render_host() -> bool:
+    return (
+        os.getenv("RENDER", "").strip().lower() == "true"
+        or bool(os.getenv("RENDER_EXTERNAL_HOSTNAME"))
+    )
+
+
+def _resolve_profile(cli_profile: Optional[str], lite_flag: bool) -> str:
+    # Backward compatibility:
+    # - --lite or AUTOHEALER_LITE=1 => render-lite
+    if lite_flag or os.getenv("AUTOHEALER_LITE", "0").strip().lower() in ("1", "true"):
+        return "render-lite"
+    if cli_profile:
+        return cli_profile
+    env_profile = os.getenv("AUTOHEALER_PROFILE", "").strip().lower()
+    if env_profile:
+        return env_profile
+    # Default: run complete stack unless explicit lite was requested.
+    # On Render this becomes render-full automatically.
+    return "render-full" if _is_render_host() else "full"
+
+
+def _select_processes(profile: str = "full") -> List[dict]:
+    profile = (profile or "full").strip().lower()
+    if profile in ("full", "render-full"):
+        return PROCESSES
+    if profile in ("lite", "render-lite"):
+        return [cfg for cfg in PROCESSES if cfg.get("name") in LITE_PROCESS_NAMES]
+    # Fail-safe: unknown profile falls back to full.
+    return PROCESSES
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  MANAGED PROCESS
@@ -336,6 +385,8 @@ class ManagedProcess:
 
     def _pin_affinity(self) -> None:
         """Set CPU affinity for the child process after launch."""
+        if DISABLE_AFFINITY:
+            return
         if self.proc is None:
             return
         try:
@@ -740,6 +791,9 @@ def main() -> None:
     p.add_argument("--monitor",  action="store_true", help="Watch only (don't start)")
     p.add_argument("--wifi",     action="store_true", help="WiFi keepalive only")
     p.add_argument("--login",    action="store_true", help="Force portal login and exit")
+    p.add_argument("--lite",     action="store_true", help="Run reduced process set for low-resource hosts")
+    p.add_argument("--profile",  choices=["full", "render-full", "lite", "render-lite"],
+                   help="Process profile selection")
     p.add_argument("--errors",   metavar="NAME", nargs="?", const="ALL",
                    help="Show recent logs (NAME or all)")
     args = p.parse_args()
@@ -771,7 +825,9 @@ def main() -> None:
         return
 
     # ── Full mode ─────────────────────────────────────────────────────────────
-    managed  = [ManagedProcess(cfg) for cfg in PROCESSES]
+    profile = _resolve_profile(args.profile, args.lite)
+    selected_processes = _select_processes(profile=profile)
+    managed  = [ManagedProcess(cfg) for cfg in selected_processes]
     watchdog = Watchdog(managed)
     stop_evt = threading.Event()
 
@@ -794,7 +850,12 @@ def main() -> None:
 
     # Start processes
     if not args.monitor:
-        print("\n  AlgoStack v10.5 Watchdog — Starting all processes\nAuthor: Ridhaant Ajoy Thackur\n  16 processes: 7 Equity + 4 Commodity + 4 Crypto + 1 AlertMonitor\n")
+        mode_lbl = profile.upper()
+        print(
+            f"\n  AlgoStack v10.5 Watchdog — Starting processes ({mode_lbl})\n"
+            f"Author: Ridhaant Ajoy Thackur\n"
+            f"  {len(selected_processes)} managed processes\n"
+        )
         watchdog.start_all()
         time.sleep(2)
 

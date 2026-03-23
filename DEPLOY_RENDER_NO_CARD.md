@@ -15,14 +15,22 @@ Repository example: `Ridhaant1614/algostack`
 5. Choose **Free** plan
 6. Deploy
 
+Use this start command (if Render asks for one):
+
+`python -X utf8 -u autohealer.py --profile render-full`
+
 ## 3) Required environment variables in Render
 
 Add these in Render -> Service -> Environment:
 
+- `AUTOHEALER_PROFILE=render-full`
+- `DISABLE_AFFINITY=1`
+- `FORCE_JSON_IPC=1`
 - `DISABLE_PUBLIC_TUNNEL=1`
 - `DISABLE_CLOUDFLARE=1`
 - `DISABLE_PYNGROK=1`
 - `TUNNEL_STABLE_MODE=1`
+- `PUBLIC_BASE_URL=https://algostack.onrender.com`
 - `PUBLIC_LINK_PASSWORD=Ridz@2004`
 - `TZ=Asia/Kolkata`
 
@@ -43,4 +51,7 @@ Use that URL as your public dashboard link.
 
 - Free plan may sleep when idle (cold start on first request).
 - This still avoids local tunnel 503/1033 failures.
+- Render full profile runs all AlgoStack sections/subsections via `autohealer`.
+- If Render memory is exhausted, temporarily switch to `AUTOHEALER_PROFILE=render-lite`.
 - The app is configured to bind Render's dynamic `PORT`.
+- Do not mix modes: if you open Render URL, data must be produced by Render processes (not your local laptop). Keep one active source of truth.

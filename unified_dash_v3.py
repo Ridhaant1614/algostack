@@ -332,6 +332,35 @@ class _DataStore:
         now_m = time.monotonic()
         if now_m - self._scan_ts >= self.SCAN_INTERVAL:
             self._scan_ts = now_m
+            def _read_latest_state(base_dir: str, date_str: str):
+                """Return newest live_state path under base_dir (supports date/window layouts)."""
+                if not base_dir:
+                    return None
+                candidates = [
+                    os.path.join(base_dir, date_str, "live_state.json"),
+                    os.path.join(base_dir, "live_state.json"),
+                ]
+                try:
+                    if os.path.isdir(base_dir):
+                        for sub in os.listdir(base_dir):
+                            sp = os.path.join(base_dir, sub)
+                            if os.path.isdir(sp):
+                                candidates.append(os.path.join(sp, "live_state.json"))
+                except Exception:
+                    pass
+                best = None
+                best_mt = -1.0
+                for cp in candidates:
+                    try:
+                        if os.path.exists(cp):
+                            mt = os.path.getmtime(cp)
+                            if mt > best_mt:
+                                best_mt = mt
+                                best = cp
+                    except Exception:
+                        pass
+                return best
+
             # Equity scanners: sweep_results/scanner{N}_*/{date}/live_state.json
             for sid in (1,2,3):
                 found=False
@@ -363,11 +392,8 @@ class _DataStore:
             for sid in (1,2,3):
                 base=COMM_SCANNER_DIRS.get(sid,"")
                 if not base: continue
-                p=os.path.join(base,ds,"live_state.json")
-                if not os.path.exists(p):
-                    # Try without date subdir
-                    p=os.path.join(base,"live_state.json")
-                if os.path.exists(p):
+                p = _read_latest_state(base, ds)
+                if p and os.path.exists(p):
                     try:
                         age=round(time.time()-os.path.getmtime(p),1); st=_rj(p)
                         with self._lock:
@@ -379,34 +405,12 @@ class _DataStore:
             for sid in (1,2,3):
                 base=CRYPTO_SCANNER_DIRS.get(sid,"")
                 if not base: continue
-                found=False
-                # First try date-based subdir
-                p=os.path.join(base,ds,"live_state.json")
-                if os.path.exists(p):
+                p = _read_latest_state(base, ds)
+                if p and os.path.exists(p):
                     try:
                         age=round(time.time()-os.path.getmtime(p),1); st=_rj(p)
                         with self._lock:
                             self._d["crypto_scanner"][sid]=st; self._d["crypto_scanner_age"][sid]=age
-                        found=True
-                    except Exception: pass
-                if not found and os.path.isdir(base):
-                    # Try newest window dir (sorted by mtime desc)
-                    try:
-                        subs=sorted(
-                            [f for f in os.listdir(base) if os.path.isdir(os.path.join(base,f))],
-                            key=lambda f: os.path.getmtime(os.path.join(base,f)),
-                            reverse=True)
-                        for win in subs[:5]:
-                            path=os.path.join(base,win,"live_state.json")
-                            if os.path.exists(path):
-                                try:
-                                    age=round(time.time()-os.path.getmtime(path),1); st=_rj(path)
-                                    with self._lock:
-                                        self._d["crypto_scanner"][sid]=st
-                                        self._d["crypto_scanner_age"][sid]=age
-                                    found=True
-                                except Exception: pass
-                                break
                     except Exception: pass
 
         # public URL (mtime-cached)
@@ -794,6 +798,11 @@ def _load_opt_csv(ds):
         if fs:
             p=os.path.join(d,fs[0]); age=time.time()-os.path.getmtime(p)
             return pd.read_csv(p),round(age,1)
+        # Fallback: some runs only persist ranked workbook.
+        fx=sorted([f for f in os.listdir(d) if f.startswith("xopt_ranked_") and f.endswith(".xlsx")],reverse=True)
+        if fx:
+            p=os.path.join(d,fx[0]); age=time.time()-os.path.getmtime(p)
+            return pd.read_excel(p),round(age,1)
     except Exception: pass
     return None,9999.0
 

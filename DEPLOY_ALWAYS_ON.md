@@ -53,3 +53,4 @@ docker compose down
 - `docker-compose.yml` persists logs/results via bind mounts.
 - In this mode Cloudflare/ngrok/localtunnel are intentionally disabled.
 - Set `PUBLIC_LINK_PASSWORD` through env if you want a custom dashboard password.
+- Default process profile is `render-full` (all sections/subsections enabled).

@@ -26,4 +26,4 @@ ENV TUNNEL_STABLE_MODE=1
 
 EXPOSE 8055
 
-CMD ["python", "autohealer.py"]
+CMD ["python", "-X", "utf8", "-u", "autohealer.py", "--profile", "render-full"]
