@@ -1,0 +1,24 @@
+services:
+  algostack:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: algostack
+    restart: unless-stopped
+    ports:
+      - "8055:8055"
+    environment:
+      - TZ=Asia/Kolkata
+      # Keep tunnel providers disabled in always-on VPS mode.
+      - DISABLE_CLOUDFLARE=1
+      - DISABLE_PYNGROK=1
+      - TUNNEL_STABLE_MODE=1
+      # Optional: override via host env if needed
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - PUBLIC_LINK_PASSWORD=${PUBLIC_LINK_PASSWORD:-Ridz@2004}
+    volumes:
+      - ./logs:/app/logs
+      - ./levels:/app/levels
+      - ./sweep_results:/app/sweep_results
+      - ./x_optimizer_results:/app/x_optimizer_results

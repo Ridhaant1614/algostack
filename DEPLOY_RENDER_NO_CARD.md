@@ -1,0 +1,46 @@
+# Deploy on Render (No Credit Card Path)
+
+This gives you a stable public URL without local tunnel dependency.
+
+## 1) Push latest code to GitHub
+
+Repository example: `Ridhaant1614/algostack`
+
+## 2) Create Render service
+
+1. Go to Render Dashboard
+2. Click **New +** -> **Web Service**
+3. Connect GitHub and choose `Ridhaant1614/algostack`
+4. Render auto-detects Docker (`Dockerfile` present)
+5. Choose **Free** plan
+6. Deploy
+
+## 3) Required environment variables in Render
+
+Add these in Render -> Service -> Environment:
+
+- `DISABLE_PUBLIC_TUNNEL=1`
+- `DISABLE_CLOUDFLARE=1`
+- `DISABLE_PYNGROK=1`
+- `TUNNEL_STABLE_MODE=1`
+- `PUBLIC_LINK_PASSWORD=Ridz@2004`
+- `TZ=Asia/Kolkata`
+
+Optional:
+
+- `TELEGRAM_BOT_TOKEN=...`
+- `TELEGRAM_CHAT_ID=...`
+
+## 4) Open your Render URL
+
+Render gives URL like:
+
+`https://<service-name>.onrender.com`
+
+Use that URL as your public dashboard link.
+
+## Notes
+
+- Free plan may sleep when idle (cold start on first request).
+- This still avoids local tunnel 503/1033 failures.
+- The app is configured to bind Render's dynamic `PORT`.

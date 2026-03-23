@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: algostack
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: DISABLE_PUBLIC_TUNNEL
+        value: "1"
+      - key: DISABLE_CLOUDFLARE
+        value: "1"
+      - key: DISABLE_PYNGROK
+        value: "1"
+      - key: TUNNEL_STABLE_MODE
+        value: "1"
+      - key: PUBLIC_LINK_PASSWORD
+        value: "Ridz@2004"
+      - key: TZ
+        value: "Asia/Kolkata"
+      # Render injects PORT dynamically; map UnifiedDash to it.
+      - key: UNIFIED_DASH_PORT
+        sync: false

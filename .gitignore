@@ -1,0 +1,11 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.tmp
+logs/
+levels/
+sweep_results/
+x_optimizer_results/
+best_x_trades/
+trade_logs/
+watchdog.log

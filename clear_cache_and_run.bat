@@ -1,0 +1,6 @@
+@echo off
+echo Clearing Python cache...
+rmdir /s /q __pycache__ 2>nul
+echo Cache cleared.
+echo Starting AlgoStack...
+python autohealer.py
