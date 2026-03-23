@@ -1215,6 +1215,24 @@ def startup() -> None:
     # Start TradingView WS (primary price source during session)
     _start_tradingview_ws()
 
+    # If MCX session is already open at startup, re-anchor levels immediately using
+    # latest live prices (instead of waiting for the next 09:30 schedule boundary).
+    try:
+        if _is_mcx_session(now):
+            for _ in range(5):
+                with _PRICE_LOCK:
+                    live_ready = sum(1 for s in SYMBOLS if (_COMM_PRICES.get(s, 0) or 0) > 0)
+                if live_ready >= 3:
+                    break
+                time.sleep(1)
+            if live_ready >= 3:
+                _recalc_levels_930()
+                log.info("Startup re-anchor complete using live MCX prices (%d symbols)", live_ready)
+            else:
+                log.warning("Startup re-anchor skipped: insufficient live MCX prices (%d/%d)", live_ready, len(SYMBOLS))
+    except Exception as _ra_err:
+        log.debug("startup re-anchor: %s", _ra_err)
+
     # Start ZMQ publisher
     _init_zmq()
 

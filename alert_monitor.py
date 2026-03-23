@@ -582,6 +582,7 @@ def _layer4_live_trade_monitor():
 
 # LAYER 5: Calculation verifier
 _L5_last: dict = {}
+_L5_last_multi: dict = {}
 _EOD_VERIFY_DONE: Dict[str, str] = {"equity": "", "mcx": "", "crypto": ""}
 
 def _safe_f(v) -> float:
@@ -741,6 +742,82 @@ def _layer5_calculation_verifier():
         log.debug("Layer5 error: %s", ex)
 
 
+def _layer5_multi_asset_verifier():
+    """Layer-5 extension: continuous equity/MCX/crypto exit-PnL drift checks."""
+    if _in_grace():
+        return
+    ds = _date_str()
+    targets = [
+        ("equity", os.path.join(TRADE_DIR, "trade_events_" + ds + ".jsonl"), _tg_equity),
+        ("mcx", os.path.join(TRADE_DIR, "commodity_trade_events_" + ds + ".jsonl"), _tg_comm),
+        ("crypto", os.path.join(TRADE_DIR, "crypto_trade_events_" + ds + ".jsonl"), _tg_crypto),
+    ]
+    snap = _L5_last_multi.setdefault(ds, {})
+    for asset, path, tg in targets:
+        if not os.path.exists(path):
+            continue
+        try:
+            logged, recomputed, n = _sum_exit_net(path, asset)
+            if n <= 0:
+                continue
+            prev = snap.get(asset)
+            if prev:
+                drift_log_calc = abs(logged - recomputed)
+                drift_prev = abs(logged - prev.get("logged", logged))
+                if (drift_log_calc > 60.0 or drift_prev > 60.0) and _can_alert(f"l5_multi_{asset}_{ds}"):
+                    tg(_fmt("🧮", f"L5 Verify ({asset.upper()}) drift",
+                            f"Exits: {n}\n"
+                            f"Logged net: Rs{logged:+,.2f}\n"
+                            f"Recomputed net: Rs{recomputed:+,.2f}\n"
+                            f"Drift(log-vs-calc): Rs{drift_log_calc:,.2f}\n"
+                            f"Drift(vs-prev): Rs{drift_prev:,.2f}\n"
+                            f"Action: check duplicate/missed trade events"))
+            snap[asset] = {"logged": logged, "recomputed": recomputed, "n": float(n)}
+        except Exception as ex:
+            log.debug("Layer5 multi %s: %s", asset, ex)
+
+
+def _check_scanner_health():
+    """Fail-safe scanner freshness monitor (all scanner subsections)."""
+    if _in_grace():
+        return
+    ds = _date_str()
+    checks = [
+        ("eq_s1", os.path.join("sweep_results", "scanner1_narrow_x0080_x0090", ds, "live_state.json"), _tg_equity, 240),
+        ("eq_s2", os.path.join("sweep_results", "scanner2_dual_x0010_x0160", ds, "live_state.json"), _tg_equity, 240),
+        ("eq_s3", os.path.join("sweep_results", "scanner3_widedual_x0010_x0320", ds, "live_state.json"), _tg_equity, 240),
+        ("cm_s1", os.path.join("sweep_results", "commodity_scanner1", ds, "live_state.json"), _tg_comm, 420),
+        ("cm_s2", os.path.join("sweep_results", "commodity_scanner2", ds, "live_state.json"), _tg_comm, 420),
+        ("cm_s3", os.path.join("sweep_results", "commodity_scanner3", ds, "live_state.json"), _tg_comm, 420),
+    ]
+    for sid in (1, 2, 3):
+        cbase = os.path.join("sweep_results", f"crypto_scanner{sid}")
+        cpath = os.path.join(cbase, ds, "live_state.json")
+        if not os.path.exists(cpath) and os.path.isdir(cbase):
+            try:
+                subs = sorted(
+                    [d for d in os.listdir(cbase) if os.path.isdir(os.path.join(cbase, d))],
+                    key=lambda d: os.path.getmtime(os.path.join(cbase, d)),
+                    reverse=True,
+                )
+                for sub in subs[:4]:
+                    p = os.path.join(cbase, sub, "live_state.json")
+                    if os.path.exists(p):
+                        cpath = p
+                        break
+            except Exception:
+                pass
+        checks.append((f"cr_s{sid}", cpath, _tg_crypto, 240))
+
+    for key, path, tg, stale_s in checks:
+        age = _file_age(path)
+        if age > stale_s and _can_alert(f"scanner_{key}_{ds}"):
+            tg(_fmt("⚠️", f"Scanner stale: {key}",
+                    f"State file age: {age:.0f}s (threshold {stale_s}s)\n"
+                    f"Path: {path}\n"
+                    f"Action: check scanner process + IPC feed"))
+
+
 _SCHEDULE = [
     (5,   [_check_commodity_trades, _check_crypto_trades, _layer4_live_trade_monitor]),
     (8,   [_check_equity_prices, _check_commodity_prices, _check_crypto_prices]),
@@ -750,6 +827,8 @@ _SCHEDULE = [
     (120, [_check_memory, _check_process_restarts]),
     (300, [_check_pnl_milestones]),
     (60,  [_layer5_calculation_verifier]),
+    (60,  [_layer5_multi_asset_verifier]),
+    (120, [_check_scanner_health]),
     (60,  [_layer45_eod_verifier]),
     (600, [_check_reanchor_due]),
 ]

@@ -36,14 +36,17 @@ logging.basicConfig(level=logging.INFO,
 log = logging.getLogger("unified_dash")
 
 DASH_PORT   = int(os.getenv("UNIFIED_DASH_PORT", os.getenv("PORT", "8055")))
-# v10.8: NGROK_TOKENS — only full authtokens work (cr_XXXX are API keys, NOT authtokens).
-# We keep ONE valid authtoken. Tunnels tried in order: ngrok → cloudflared → SSH.
-NGROK_TOKEN   = os.getenv("NGROK_AUTHTOKEN", "3BJFwkTTGUXId7wJVuxwYgvhzaR_4vBezPDWQKJVQJpS3M4vD")
-NGROK_API_KEY = os.getenv("NGROK_API_KEY",   "3BJFjgQBSExlG3BmeIx9jDOIyHX_7tRFdhKruruAHCr1vkr58")
+# v10.8: NGROK — use full authtoken (NGROK_AUTHTOKEN). API key is separate (dashboard API).
+# Local default: ngrok-only tunnel + single URL (no restarts / no new Telegram links).
+NGROK_TOKEN   = os.getenv("NGROK_AUTHTOKEN", "3BMlm2nEi1qx91aKLbfMl6QBPuB_611Sp2DLBMCGfAxGztHDz")
+NGROK_API_KEY = os.getenv("NGROK_API_KEY",   "3BMmN3VVNGTdbdR2W23z4P8qGps_3xvRnrSyEZLDFefecfxmz")
 CLOUDFLARED   = os.getenv("CLOUDFLARED_PATH", "cloudflared")
 DISABLE_CLOUDFLARE = os.getenv("DISABLE_CLOUDFLARE", "1").strip() in ("1", "true", "True")
-DISABLE_PYNGROK    = os.getenv("DISABLE_PYNGROK", "1").strip() in ("1", "true", "True")
+DISABLE_PYNGROK    = os.getenv("DISABLE_PYNGROK", "0").strip() in ("1", "true", "True")
 DISABLE_PUBLIC_TUNNEL = os.getenv("DISABLE_PUBLIC_TUNNEL", "0").strip() in ("1", "true", "True")
+TUNNEL_NGROK_ONLY  = os.getenv("TUNNEL_NGROK_ONLY", "1").strip() in ("1", "true", "True")
+# Guarantee: only 1 public URL is ever sent to Telegram and no tunnel restarts.
+TUNNEL_SINGLE_URL  = os.getenv("TUNNEL_SINGLE_URL", "1").strip() in ("1", "true", "True")
 # v10.8: Keep process handles alive at module level so tunnels survive
 _CF_PROC:    Optional[subprocess.Popen] = None
 _NGROK_PROC: Optional[subprocess.Popen] = None  # ngrok CLI fallback handle
@@ -1781,13 +1784,46 @@ tr:hover td{{background:rgba(255,255,255,.025)}}
     # ── Charts Page ──────────────────────────────────────────────────────────
     def page_charts():
         """Charts page: in-app lightweight charts from live engine prices."""
+        def _tv_url(asset: str, sym: str) -> str:
+            s = str(sym or "").upper().strip()
+            if asset == "crypto":
+                return f"https://www.tradingview.com/chart/?symbol=BINANCE:{s}USDT"
+            if asset == "commodity":
+                # Common TradingView commodity symbols (CFD proxies)
+                m = {
+                    "GOLD": "TVC:GOLD",
+                    "SILVER": "TVC:SILVER",
+                    "CRUDE": "TVC:USOIL",
+                    "NATURALGAS": "TVC:NATGAS",
+                    "COPPER": "TVC:COPPER",
+                }
+                return f"https://www.tradingview.com/chart/?symbol={m.get(s, 'TVC:GOLD')}"
+            # Equity default (NSE)
+            return f"https://www.tradingview.com/chart/?symbol=NSE:{s}"
 
-        def _live_chart_card(title, graph_id, color, height=260):
+        def _live_chart_card(title, graph_id, color, height=260, tv_url: Optional[str] = None):
+            head = html.Div([
+                html.Span(title),
+                html.Div(style={"flex":"1"}),
+                html.A(
+                    "TV ↗",
+                    href=tv_url or "#",
+                    target="_blank",
+                    rel="noopener noreferrer",
+                    style={
+                        "color": color,
+                        "fontSize": "11px",
+                        "textDecoration": "none",
+                        "fontWeight": "700",
+                        "opacity": "0.9",
+                    },
+                ) if tv_url else html.Span(""),
+            ], style={"color":color,"fontWeight":"700","fontSize":"12px",
+                      "padding":"8px 12px","background":SB,
+                      "borderBottom":f"1px solid {BORDER}",
+                      "borderRadius":"8px 8px 0 0","display":"flex","alignItems":"center","gap":"8px"})
             return html.Div([
-                html.Div(title, style={"color":color,"fontWeight":"700","fontSize":"12px",
-                                       "padding":"8px 12px","background":SB,
-                                       "borderBottom":f"1px solid {BORDER}",
-                                       "borderRadius":"8px 8px 0 0"}),
+                head,
                 dcc.Graph(
                     id=graph_id,
                     config={"displayModeBar": False},
@@ -1800,31 +1836,31 @@ tr:hover td{{background:rgba(255,255,255,.025)}}
         equity_section = html.Div([
             html.Div("📊  NSE Equity Charts", className="sec"),
             html.Div([
-                _live_chart_card("NIFTY", "ch-eq-nifty", EQ_COL, 260),
-                _live_chart_card("BANKNIFTY", "ch-eq-banknifty", EQ_COL, 260),
-                _live_chart_card("INFY", "ch-eq-infy", EQ_COL, 200),
-                _live_chart_card("RELIANCE", "ch-eq-reliance", EQ_COL, 200),
+                _live_chart_card("NIFTY", "ch-eq-nifty", EQ_COL, 260, _tv_url("equity", "NIFTY")),
+                _live_chart_card("BANKNIFTY", "ch-eq-banknifty", EQ_COL, 260, _tv_url("equity", "BANKNIFTY")),
+                _live_chart_card("INFY", "ch-eq-infy", EQ_COL, 200, _tv_url("equity", "INFY")),
+                _live_chart_card("RELIANCE", "ch-eq-reliance", EQ_COL, 200, _tv_url("equity", "RELIANCE")),
             ], style={"display":"flex","gap":"12px","flexWrap":"wrap","marginBottom":"12px"}),
         ], className="card")
 
         commodity_section = html.Div([
             html.Div("🥇  MCX Commodity Charts", className="sec"),
             html.Div([
-                _live_chart_card("GOLD", "ch-comm-gold", COMM_COL, 230),
-                _live_chart_card("SILVER", "ch-comm-silver", COMM_COL, 230),
-                _live_chart_card("CRUDE OIL", "ch-comm-crude", COMM_COL, 230),
-                _live_chart_card("NATURAL GAS", "ch-comm-naturalgas", COMM_COL, 230),
-                _live_chart_card("COPPER", "ch-comm-copper", COMM_COL, 200),
+                _live_chart_card("GOLD", "ch-comm-gold", COMM_COL, 230, _tv_url("commodity", "GOLD")),
+                _live_chart_card("SILVER", "ch-comm-silver", COMM_COL, 230, _tv_url("commodity", "SILVER")),
+                _live_chart_card("CRUDE OIL", "ch-comm-crude", COMM_COL, 230, _tv_url("commodity", "CRUDE")),
+                _live_chart_card("NATURAL GAS", "ch-comm-naturalgas", COMM_COL, 230, _tv_url("commodity", "NATURALGAS")),
+                _live_chart_card("COPPER", "ch-comm-copper", COMM_COL, 200, _tv_url("commodity", "COPPER")),
             ], style={"display":"flex","gap":"14px","flexWrap":"wrap"}),
         ], className="card")
 
         crypto_section = html.Div([
             html.Div("₿  Binance Crypto Charts", className="sec"),
             html.Div([
-                _live_chart_card("BTC / USDT", "ch-crypto-btc", CRYPTO_COL, 230),
-                _live_chart_card("ETH / USDT", "ch-crypto-eth", CRYPTO_COL, 230),
-                _live_chart_card("BNB / USDT", "ch-crypto-bnb", CRYPTO_COL, 230),
-                _live_chart_card("SOL / USDT", "ch-crypto-sol", CRYPTO_COL, 230),
+                _live_chart_card("BTC / USDT", "ch-crypto-btc", CRYPTO_COL, 230, _tv_url("crypto", "BTC")),
+                _live_chart_card("ETH / USDT", "ch-crypto-eth", CRYPTO_COL, 230, _tv_url("crypto", "ETH")),
+                _live_chart_card("BNB / USDT", "ch-crypto-bnb", CRYPTO_COL, 230, _tv_url("crypto", "BNB")),
+                _live_chart_card("SOL / USDT", "ch-crypto-sol", CRYPTO_COL, 230, _tv_url("crypto", "SOL")),
             ], style={"display":"flex","gap":"14px","flexWrap":"wrap"}),
         ], className="card")
 
@@ -1843,7 +1879,16 @@ tr:hover td{{background:rgba(255,255,255,.025)}}
         for l in lvls[:18]:
             sym=l.get("SYMBOL",""); px_v=eq_px.get(sym,0)
             eq_rows.append(html.Tr([
-                html.Td(sym, style={"color":ACCENT,"fontWeight":"700","padding":"4px 8px","fontSize":"12px"}),
+                html.Td(
+                    html.A(
+                        sym,
+                        href=_tv_url("equity", sym),
+                        target="_blank",
+                        rel="noopener noreferrer",
+                        style={"color":ACCENT,"fontWeight":"700","fontSize":"12px","textDecoration":"none"},
+                    ),
+                    style={"padding":"4px 8px"},
+                ),
                 html.Td(_fmt(l.get("SELL BELOW")), style={"color":RED,"padding":"4px 6px","textAlign":"right","fontSize":"12px"}),
                 html.Td(f"₹{px_v:,.2f}" if px_v else "—",
                         style={"color":YELLOW,"fontWeight":"700","padding":"4px 8px","textAlign":"center",
@@ -3971,8 +4016,8 @@ def open_tunnel(port, timeout=50):
     with _TUNNEL_LOCK:
         stable_mode = os.getenv("TUNNEL_STABLE_MODE", "1").strip() not in ("0", "false", "False")
 
-        # Preferred stable chain
-        if stable_mode:
+        # Preferred stable chain (skip everything except ngrok in ngrok-only mode).
+        if stable_mode and not TUNNEL_NGROK_ONLY:
             # 1) Pinggy over SSH:443 (Cloudflare-blacklist path, stable free option)
             u = _try_ssh_tunnel(port, "a.pinggy.io", ssh_port=443, timeout=30)
             if u:
@@ -4106,14 +4151,15 @@ def open_tunnel(port, timeout=50):
             except Exception:
                 pass
 
-        # final fallbacks
-        u = _try_ssh_tunnel(port, "a.pinggy.io", ssh_port=443, timeout=30)
-        if u:
-            log.info("✓ Tunnel (Pinggy SSH:443) → %s", u)
-            return u
-        u = _try_localtunnel(port, timeout=60)
-        if u:
-            return u
+        # final fallbacks (disabled in ngrok-only mode)
+        if not TUNNEL_NGROK_ONLY:
+            u = _try_ssh_tunnel(port, "a.pinggy.io", ssh_port=443, timeout=30)
+            if u:
+                log.info("✓ Tunnel (Pinggy SSH:443) → %s", u)
+                return u
+            u = _try_localtunnel(port, timeout=60)
+            if u:
+                return u
 
         log.warning("⚠ All tunnel methods failed — LAN only: http://%s:%d", get_lan_ip(), port)
         return None
@@ -4165,6 +4211,14 @@ def _tunnel_guardian(port, lip):
         time.sleep(60)
         try:
             cur = last_url[0]
+            # Single URL mode: never rotate, never restart, never re-announce.
+            if TUNNEL_SINGLE_URL:
+                try:
+                    if cur and str(cur).startswith("http"):
+                        _save(cur)
+                except Exception:
+                    pass
+                continue
             # Check ngrok local API for URL rotations (free-tier occasionally rotates),
             # but only when this dashboard is actually on an ngrok URL.
             if "ngrok" in (cur or "") or (_NGROK_PROC is not None):
@@ -4240,7 +4294,8 @@ def _tunnel_guardian(port, lip):
                     )
                     if _gate:
                         _msg += f"\nLocaltunnel gate password: {_gate}"
-                    _tg(_msg)
+                    if not TUNNEL_SINGLE_URL:
+                        _tg(_msg)
                 except Exception: pass
         except Exception as e:
             log.debug("tunnel_guardian: %s", e)
