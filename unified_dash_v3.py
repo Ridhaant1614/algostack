@@ -59,6 +59,7 @@ TG_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN", "7587307352:AAG6RaiF4gO5I_ZFZ_4b8G
 TG_CHATS    = [c for c in [os.getenv("TELEGRAM_CHAT_ID","1376513391"),
                              os.getenv("TELEGRAM_CHAT_ID_2","793674804")] if c]
 PUBLIC_LINK_PASSWORD = os.getenv("PUBLIC_LINK_PASSWORD", "Ridz@2004")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "AIzaSyB9fJ1geyar2gtgs-HYsVTOKEGwmNt_r08")
 USDT_TO_INR = float(os.getenv("USDT_TO_INR", "84.0"))
@@ -4346,7 +4347,8 @@ def main():
         global _STARTUP_URL_SENT
         if DISABLE_PUBLIC_TUNNEL:
             pub = None
-            url = f"http://{lip}:{DASH_PORT}"
+            # Hosted mode (Render/Railway/etc): prefer explicit public base URL.
+            url = PUBLIC_BASE_URL or f"http://{lip}:{DASH_PORT}"
             log.info("Public tunnel disabled by DISABLE_PUBLIC_TUNNEL=1")
         else:
             pub = open_tunnel(DASH_PORT)
