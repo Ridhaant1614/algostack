@@ -1,80 +1,81 @@
 # AlgoStack Render Setup (Do This Exactly)
 
-Follow these steps in order. This will make Render run all AlgoStack sections/subsections with live data.
+## Why the site showed 502 / blank page
+
+Render **free** instances have about **512 MB RAM**. Running **all 16 processes** (`render-full`) uses more than that → Render kills the container (**out of memory**) → **HTTP 502**.
+
+**Default is now `render-lite`** (fewer processes) so the site stays up. You still get: Equity + Dash + 1 equity scanner + XOptimizer + BestX + CommodityEngine + 1 comm scanner + CryptoEngine + 1 crypto scanner + AlertMonitor.
+
+To run **every** scanner process, use a **paid Render plan with more RAM** or a **VPS** (see `DEPLOY_ALWAYS_ON.md`), then set `AUTOHEALER_PROFILE=render-full`.
+
+---
 
 ## 1) Push latest code to GitHub
 
-Run in project folder:
-
 ```powershell
 git add .
-git commit -m "Render full profile setup"
+git commit -m "Render: lite default, fast PORT bind, skip WiFi on cloud"
 git push
 ```
 
-If there are no new changes, Git may say nothing to commit. That is fine.
-
 ## 2) Open your Render service
 
-1. Go to [https://dashboard.render.com](https://dashboard.render.com)
-2. Open service: `algostack`
-3. Go to **Settings**
+1. [dashboard.render.com](https://dashboard.render.com) → service **algostack** → **Settings**
 
-## 3) Set Start Command
+## 3) Start Command
 
-In Render Settings, set:
+Use:
 
-`python -X utf8 -u autohealer.py --profile render-full`
+`python -X utf8 -u autohealer.py --profile render-lite`
 
-If you use Blueprint (`render.yaml`), this may already be auto-set.
+(Or leave blank if `render.yaml` / Dockerfile sets it.)
 
-## 4) Add/Update Environment Variables
+**Do not** use only `unified_dash_v3.py` — that is UI-only (no live engines).
 
-Go to **Environment** and set these exactly:
+## 4) Environment variables
 
-- `AUTOHEALER_PROFILE=render-full`
-- `DISABLE_AFFINITY=1`
-- `FORCE_JSON_IPC=1`
-- `DISABLE_PUBLIC_TUNNEL=1`
-- `DISABLE_CLOUDFLARE=1`
-- `DISABLE_PYNGROK=1`
-- `TUNNEL_STABLE_MODE=1`
-- `PUBLIC_BASE_URL=https://algostack.onrender.com`
-- `PUBLIC_LINK_PASSWORD=Ridz@2004`
-- `TZ=Asia/Kolkata`
+| Variable | Value (free tier) |
+|----------|-------------------|
+| `AUTOHEALER_PROFILE` | `render-lite` |
+| `DISABLE_WIFI_KEEPALIVE` | `1` |
+| `DISABLE_AFFINITY` | `1` |
+| `FORCE_JSON_IPC` | `1` |
+| `DISABLE_PUBLIC_TUNNEL` | `1` |
+| `DISABLE_CLOUDFLARE` | `1` |
+| `DISABLE_PYNGROK` | `1` |
+| `TUNNEL_STABLE_MODE` | `1` |
+| `PUBLIC_BASE_URL` | `https://algostack.onrender.com` |
+| `PUBLIC_LINK_PASSWORD` | `Ridz@2004` |
+| `TZ` | `Asia/Kolkata` |
 
-Optional Telegram vars (if you want alerts):
+Remove any manual **`UNIFIED_DASH_PORT`** override — the app uses Render’s **`PORT`** automatically.
 
-- `TELEGRAM_BOT_TOKEN=...`
-- `TELEGRAM_CHAT_ID=...`
+Optional: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, …
 
 ## 5) Deploy
 
-1. Click **Manual Deploy** -> **Deploy latest commit**
-2. Wait until deploy finishes
-3. Open: [https://algostack.onrender.com](https://algostack.onrender.com)
+**Manual Deploy** → **Deploy latest commit** → open `https://algostack.onrender.com`
 
-## 6) Verify in Render logs
+## 6) Verify in logs
 
-Open **Logs** and confirm you see:
+You should see:
 
-- `Starting processes (RENDER-FULL)`
-- multiple process starts (`Algofinal`, `UnifiedDash`, scanners, `XOptimizer`, `BestXTrader`, `CommodityEngine`, `CryptoEngine`, `AlertMonitor`)
+- `Starting processes (RENDER-LITE)` (or `LITE`)
+- `UnifiedDash` starts **first** (fast bind to `$PORT`)
+- `WiFi keepalive skipped (hosted …)`
+- **No** `Ran out of memory (used over 512MB)`
 
-If you do not see `RENDER-FULL`, the start command or env vars are wrong.
+If you still see OOM, remove extra env or reduce processes further.
 
-## 7) If memory issue happens on free plan
+## 7) Full 16-process stack on Render
 
-Temporarily switch to lite mode:
+Only if your instance has **enough RAM** (paid tier):
 
-- Set `AUTOHEALER_PROFILE=render-lite`
-- Redeploy
+- Start command: `python -X utf8 -u autohealer.py --profile render-full`
+- `AUTOHEALER_PROFILE=render-full`
 
-When stable, switch back to `render-full`.
+---
 
 ## Important
 
-Use one source only:
-
-- If you open `algostack.onrender.com`, data must come from Render processes.
-- Do not mix local autohealer output with Render dashboard expectations.
+- Data on `algostack.onrender.com` comes **only** from processes running **on Render**, not from your laptop.

@@ -4265,6 +4265,21 @@ def main():
     import logging as _lg
     _lg.getLogger("werkzeug").setLevel(_lg.WARNING)
     _lg.getLogger("dash").setLevel(_lg.WARNING)
+    # Render guard: if dashboard is started directly (not by autohealer),
+    # only UI runs and all engine-backed sections will remain stale.
+    _is_render = (os.getenv("RENDER", "").strip().lower() == "true") or bool(os.getenv("RENDER_EXTERNAL_HOSTNAME"))
+    _child_ok = os.getenv("AUTOHEALER_CHILD", "0").strip() in ("1", "true", "True")
+    if _is_render and not _child_ok:
+        _warn = (
+            "RENDER MISCONFIG: Started unified_dash_v3.py directly. "
+            "Use start command: python -X utf8 -u autohealer.py --profile render-full"
+        )
+        print(f"[STARTUP] {_warn}", flush=True)
+        try:
+            log.error(_warn)
+            _tg(f"⚠️ {_warn}")
+        except Exception:
+            pass
     lip = get_lan_ip()
     print(f"[STARTUP] LAN IP: {lip}, Port: {DASH_PORT}", flush=True)
     log.info("Building AlgoStack v10.9 dashboard on port %d…", DASH_PORT)

@@ -15,7 +15,11 @@ Repository example: `Ridhaant1614/algostack`
 5. Choose **Free** plan
 6. Deploy
 
-Use this start command (if Render asks for one):
+Use this start command (free tier — avoids OOM / 502):
+
+`python -X utf8 -u autohealer.py --profile render-lite`
+
+For **all 16 processes**, you need more RAM (paid Render or VPS):
 
 `python -X utf8 -u autohealer.py --profile render-full`
 
@@ -51,7 +55,7 @@ Use that URL as your public dashboard link.
 
 - Free plan may sleep when idle (cold start on first request).
 - This still avoids local tunnel 503/1033 failures.
-- Render full profile runs all AlgoStack sections/subsections via `autohealer`.
-- If Render memory is exhausted, temporarily switch to `AUTOHEALER_PROFILE=render-lite`.
+- **512 MB free tier**: use `render-lite` or the instance will OOM → **502**.
+- **Full stack** (`render-full`): use a larger instance or VPS.
 - The app is configured to bind Render's dynamic `PORT`.
 - Do not mix modes: if you open Render URL, data must be produced by Render processes (not your local laptop). Keep one active source of truth.

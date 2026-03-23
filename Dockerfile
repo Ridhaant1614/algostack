@@ -23,7 +23,12 @@ COPY . /app
 ENV DISABLE_CLOUDFLARE=1
 ENV DISABLE_PYNGROK=1
 ENV TUNNEL_STABLE_MODE=1
+# Reduce BLAS/thread RAM on small containers (Render free tier)
+ENV OMP_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
 
 EXPOSE 8055
 
-CMD ["python", "-X", "utf8", "-u", "autohealer.py", "--profile", "render-full"]
+# Default lite on cloud; override with AUTOHEALER_PROFILE=render-full + more RAM
+CMD ["python", "-X", "utf8", "-u", "autohealer.py", "--profile", "render-lite"]

@@ -5,10 +5,14 @@ services:
     plan: free
     autoDeploy: true
     healthCheckPath: /
-    dockerCommand: python -X utf8 -u autohealer.py --profile render-full
+    # Free tier ≈512MB: render-full (16 procs) OOMs → 502. Lite fits; set
+    # AUTOHEALER_PROFILE=render-full only if you upgrade instance RAM.
+    dockerCommand: python -X utf8 -u autohealer.py --profile render-lite
     envVars:
       - key: AUTOHEALER_PROFILE
-        value: "render-full"
+        value: "render-lite"
+      - key: DISABLE_WIFI_KEEPALIVE
+        value: "1"
       - key: DISABLE_AFFINITY
         value: "1"
       - key: DISABLE_PUBLIC_TUNNEL

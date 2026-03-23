@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from collections import deque
 from datetime import datetime
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import pytz
 
@@ -318,9 +318,43 @@ def _resolve_profile(cli_profile: Optional[str], lite_flag: bool) -> str:
     env_profile = os.getenv("AUTOHEALER_PROFILE", "").strip().lower()
     if env_profile:
         return env_profile
-    # Default: run complete stack unless explicit lite was requested.
-    # On Render this becomes render-full automatically.
-    return "render-full" if _is_render_host() else "full"
+    # Render free tier ≈512MB RAM: 16 Python processes (render-full) OOM-kills the
+    # container → HTTP 502 / blank page. Default to lite on Render unless overridden.
+    if _is_render_host():
+        return "render-lite"
+    return "full"
+
+
+def _reorder_render_dash_first(managed: List["ManagedProcess"]) -> None:
+    """Bind Render $PORT ASAP: start UnifiedDash before heavy engines."""
+    if not _is_render_host():
+        return
+    idx = next((i for i, m in enumerate(managed) if m.name == "UnifiedDash"), -1)
+    if idx <= 0:
+        if idx == 0:
+            managed[0].cfg["start_delay"] = 0
+        return
+    dash = managed.pop(idx)
+    dash.cfg["start_delay"] = 0
+    managed.insert(0, dash)
+    log.info("Render: UnifiedDash moved to front (start_delay=0) for fast PORT bind")
+
+
+def _render_supervisor_loop(
+    managed: List["ManagedProcess"],
+    stop_evt: threading.Event,
+    wifi: Optional[Any],
+) -> None:
+    """Hold PID 1 on Render without Rich TUI (saves RAM / no TTY)."""
+    log.info("Render supervisor: holding main process (heartbeat every 60s)")
+    while not stop_evt.is_set():
+        n_ok = sum(1 for m in managed if m.is_alive())
+        log.info(
+            "Render heartbeat: %d/%d child processes alive",
+            n_ok,
+            len(managed),
+        )
+        stop_evt.wait(60.0)
 
 
 def _select_processes(profile: str = "full") -> List[dict]:
@@ -834,12 +868,16 @@ def main() -> None:
     profile = _resolve_profile(args.profile, args.lite)
     selected_processes = _select_processes(profile=profile)
     managed  = [ManagedProcess(cfg) for cfg in selected_processes]
+    _reorder_render_dash_first(managed)
     watchdog = Watchdog(managed)
     stop_evt = threading.Event()
 
-    # Start WiFi keepalive
+    # Start WiFi keepalive (local college portal only — skip on cloud hosts)
     wifi = None
-    if WIFI_OK:
+    _skip_wifi = _is_render_host() or os.getenv(
+        "DISABLE_WIFI_KEEPALIVE", "0"
+    ).strip().lower() in ("1", "true")
+    if WIFI_OK and not _skip_wifi:
         wifi = WifiKeepalive(tg_token=TG_TOKEN, tg_chats=TG_CHATS)
         wifi.start()
         # Expose to wifi_keepalive module so unified_dash can read speed data
@@ -851,6 +889,8 @@ def main() -> None:
         log.info("WiFi keepalive active (check=%ds, re-login=%dh)",
                  __import__("wifi_keepalive").CHECK_INTERVAL,
                  __import__("wifi_keepalive").LOGIN_INTERVAL // 3600)
+    elif _skip_wifi:
+        log.info("WiFi keepalive skipped (hosted / DISABLE_WIFI_KEEPALIVE)")
     else:
         log.warning("wifi_keepalive.py not found — internet monitoring disabled")
 
@@ -865,19 +905,23 @@ def main() -> None:
         watchdog.start_all()
         time.sleep(2)
 
+    _wifi_note = "WiFi off" if (not wifi) else "WiFi keepalive"
     _tg_async(
         f"🟢 AlgoStack v10.5 Watchdog started "
-        f"({'monitoring' if args.monitor else 'full'}) "
+        f"({'monitoring' if args.monitor else profile}) "
         f"({datetime.now(IST).strftime('%H:%M IST')})\n"
-        f"Watching {len(managed)} processes + WiFi keepalive"
+        f"Watching {len(managed)} processes + {_wifi_note}"
     )
 
     # Start watchdog loop in background
     threading.Thread(target=watchdog.run, daemon=True, name="Watchdog").start()
 
-    # Live display (blocks until Ctrl+C)
+    # Live display (blocks until Ctrl+C). On Render: no Rich TUI — saves RAM.
     try:
-        _live_display(managed, stop_evt, wifi)
+        if _is_render_host():
+            _render_supervisor_loop(managed, stop_evt, wifi)
+        else:
+            _live_display(managed, stop_evt, wifi)
     except KeyboardInterrupt:
         pass
     finally:
